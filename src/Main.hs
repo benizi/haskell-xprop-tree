@@ -41,10 +41,8 @@ rootWin dpy = rootWindow dpy (defaultScreen dpy)
 getPropList :: Display -> String -> Window -> IO [String]
 getPropList dpy name w = do
   atom <- internAtom dpy name False
-  prop <- Ex.handle empty $ getTextProperty dpy w atom >>= asTextList
-  return prop
+  Ex.handle empty $ getTextProperty dpy w atom >>= wcTextPropertyToTextList dpy
     where
-      asTextList = wcTextPropertyToTextList dpy >>= return
       empty = mempty :: Ex.SomeException -> IO [String]
 
 -- |Dumb data type to allow passing either an Atom or a String.
