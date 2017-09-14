@@ -1,13 +1,10 @@
 module Main where
 
-import qualified Control.Arrow as Arr
 import qualified Control.Exception as Ex
-import Control.Exception.Safe (MonadCatch, handleAny, throw)
-import Control.Monad (MonadPlus, forM_, mzero, unless)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
+import Control.Exception.Safe (handleAny, throw)
+import Control.Monad (forM_, unless)
 import Data.List (intersperse)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromMaybe)
 import Graphics.X11.Xlib
   ( Atom
   , Display
@@ -42,13 +39,6 @@ allWindows dpy = do
 -- |Helper function to get the root window of the default screen of a Display.
 rootWin :: Display -> IO Window
 rootWin dpy = rootWindow dpy (defaultScreen dpy)
-
-getPropList :: Display -> String -> Window -> IO [String]
-getPropList dpy name w = do
-  atom <- internAtom dpy name False
-  Ex.handle empty $ getTextProperty dpy w atom >>= wcTextPropertyToTextList dpy
-    where
-      empty = mempty :: Ex.SomeException -> IO [String]
 
 -- |UnhandledFormat is for debugging issues with @TextProperty@ encodings.
 data UnhandledFormat = UnhandledFormat String
@@ -99,39 +89,6 @@ stringPropList d a w = do
               return $ (\n -> "0x" ++ showHex n "") <$> wins
           | otherwise = let message = concat [name, ":", show $ tp_format p]
                          in throw $ Ex.toException $ UnhandledFormat message
-
--- |If any errors occur, discard them and return an empty value.
-discardErrIO :: (MonadIO m, MonadCatch m, MonadPlus m) => IO a -> m a
-discardErrIO = handleAny (\_ -> mzero) . liftIO
-
--- |Get the non-empty String values of the given property for a Window.
-getPropsMaybe :: Display -> Atom -> Window -> IO (Maybe [String])
-getPropsMaybe dpy atom w = runMaybeT $ do
-  prop <- handleAny (\_ -> mzero) $ liftIO $ getTextProperty dpy w atom
-  discardErrIO $ wcTextPropertyToTextList dpy prop >>= return . filter (/= "")
-
--- |Get the first non-empty String value of the given property for a Window.
-getPropMaybeT :: Display -> Atom -> Window -> MaybeT IO String
-getPropMaybeT dpy atom w = do
-  prop <- discardErrIO $ getTextProperty dpy w atom
-  liftIO $ wcTextPropertyToTextList dpy prop >>= return . head
-
--- |Same as getPropMaybeT, but unwrapped from MaybeT.
-getPropMaybe :: Display -> Atom -> Window -> IO (Maybe String)
-getPropMaybe d a w = runMaybeT $ getPropMaybeT d a w
-
--- |Return a list of tuples consisting of a Window and its values for the prop.
-propPerWindow :: Display -> Atom -> [Window] -> IO [(Window,Maybe [String])]
-propPerWindow dpy propID windows = do
-  props <- sequence $ getPropsMaybe dpy propID <$> windows
-  return $ zip windows props
-
--- |Same as propPerWindow, but limited to Windows that have a value for the
--- property.
-justWindowProp :: Display -> Atom -> [Window] -> IO [(Window,[String])]
-justWindowProp d a ws = do
-  wps <- propPerWindow d a ws
-  return $ (Arr.second fromJust) <$> filter (isJust . snd) wps
 
 -- |The default text property to fetch if none is passed as an argument.
 defaultPropertyName :: String
