@@ -2,9 +2,9 @@ module Main where
 
 import qualified Control.Arrow as Arr
 import qualified Control.Exception as Ex
-import Control.Exception.Safe (handleAny)
-import Control.Monad (mzero)
-import Control.Monad.IO.Class (liftIO)
+import Control.Exception.Safe (MonadCatch, handleAny)
+import Control.Monad (MonadPlus, mzero)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Data.List (intersperse)
 import Data.Maybe (fromJust, isJust)
@@ -54,26 +54,37 @@ resolve :: Display -> StringAtom -> IO Atom
 resolve _ (AnAtom a) = return a
 resolve d (AString s) = internAtom d s False
 
--- |Get the first String value of the given property for a Window.
+-- |If any errors occur, discard them and return an empty value.
+discardErrIO :: (MonadIO m, MonadCatch m, MonadPlus m) => IO a -> m a
+discardErrIO = handleAny (\_ -> mzero) . liftIO
+
+-- |Get the non-empty String values of the given property for a Window.
+getPropsMaybe :: Display -> StringAtom -> Window -> IO (Maybe [String])
+getPropsMaybe dpy propID w = runMaybeT $ do
+  atom <- liftIO $ resolve dpy propID
+  prop <- handleAny (\_ -> mzero) $ liftIO $ getTextProperty dpy w atom
+  discardErrIO $ wcTextPropertyToTextList dpy prop >>= return . filter (/= "")
+
+-- |Get the first non-empty String value of the given property for a Window.
 getPropMaybeT :: Display -> StringAtom -> Window -> MaybeT IO String
 getPropMaybeT dpy propID w = do
   atom <- liftIO $ resolve dpy propID
-  prop <- handleAny (\_ -> mzero) $ liftIO $ getTextProperty dpy w atom
+  prop <- discardErrIO $ getTextProperty dpy w atom
   liftIO $ wcTextPropertyToTextList dpy prop >>= return . head
 
 -- |Same as getPropMaybeT, but unwrapped from MaybeT.
 getPropMaybe :: Display -> StringAtom -> Window -> IO (Maybe String)
 getPropMaybe d a w = runMaybeT $ getPropMaybeT d a w
 
--- |Return a list of tuples consisting of a Window and its value for the prop.
-propPerWindow :: Display -> StringAtom -> [Window] -> IO [(Window,Maybe String)]
+-- |Return a list of tuples consisting of a Window and its values for the prop.
+propPerWindow :: Display -> StringAtom -> [Window] -> IO [(Window,Maybe [String])]
 propPerWindow dpy propID windows = do
-  props <- sequence $ getPropMaybe dpy propID <$> windows
+  props <- sequence $ getPropsMaybe dpy propID <$> windows
   return $ zip windows props
 
 -- |Same as propPerWindow, but limited to Windows that have a value for the
 -- property.
-justWindowProp :: Display -> StringAtom -> [Window] -> IO [(Window,String)]
+justWindowProp :: Display -> StringAtom -> [Window] -> IO [(Window,[String])]
 justWindowProp d a ws = do
   wps <- propPerWindow d a ws
   return $ (Arr.second fromJust) <$> filter (isJust . snd) wps
@@ -91,5 +102,5 @@ main = do
   args <- getArgs
   let propname = case args of (a:_) -> a ; [] -> defaultPropertyName
   wps <- justWindowProp dpy (AString propname) ws
-  let join (win, val) = mconcat . intersperse "\t" $ [(show win), val]
+  let join (win, val) = mconcat . intersperse "\t" $ [show win] ++ val
   mapM_ (putStrLn . join) wps
