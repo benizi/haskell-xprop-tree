@@ -35,6 +35,41 @@ $ stack exec -- xprop-tree WM_CLASS
 # ...
 ```
 
+# Goals/features
+
+## Output/options
+
+- [x] Tab-delimited
+- [ ] JSON output for piping to `jq`
+- [ ] Empty output for windows lacking the property
+- [ ] Handle empty strings in lists
+- [ ] Option to just print window IDs
+
+## Atom types
+
+- string-like values
+  - [x] `STRING`
+  - [x] `UTF8_STRING`
+  - [x] `COMPOUND_TEXT`
+- lists of atoms
+  - [x] `ATOM`
+- numeric types
+  - [x] `CARDINAL`
+  - [x] `INTEGER`
+  - [x] `WINDOW`
+- window manager types
+  - [ ] `WM_HINTS:32`
+  - [ ] `WM_SIZE_HINTS:32`
+  - [ ] `WM_STATE:32`
+- GDK-related type
+  - [ ] `GDK_TIMESTAMP_PROP:8`
+- Motif types
+  - [ ] `_MOTIF_DRAG_ATOMS:8`
+  - [ ] `_MOTIF_DRAG_ATOM_PAIRS:8`
+  - [ ] `_MOTIF_DRAG_RECEIVER_INFO:8`
+  - [ ] `_MOTIF_DRAG_TARGETS:8`
+  - [ ] `_MOTIF_WM_HINTS:32`
+
 # License
 
 The MIT License (MIT)
