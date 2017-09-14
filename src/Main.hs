@@ -3,7 +3,7 @@ module Main where
 import qualified Control.Arrow as Arr
 import qualified Control.Exception as Ex
 import Control.Exception.Safe (MonadCatch, handleAny)
-import Control.Monad (MonadPlus, mzero)
+import Control.Monad (MonadPlus, forM_, mzero)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Data.List (intersperse)
@@ -103,5 +103,5 @@ main = do
   args <- getArgs
   let propname = case args of (a:_) -> a ; [] -> defaultPropertyName
   wps <- justWindowProp dpy (AString propname) ws
-  let join (id, val) = mconcat . intersperse "\t" $ ["0x" ++ showHex id ""] ++ val
-  mapM_ (putStrLn . join) wps
+  forM_ wps $ \(win, vals) -> do
+    putStrLn $ mconcat . intersperse "\t" $ ["0x" ++ showHex win ""] ++ vals
