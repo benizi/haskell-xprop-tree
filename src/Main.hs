@@ -50,10 +50,6 @@ getPropList dpy name w = do
     where
       empty = mempty :: Ex.SomeException -> IO [String]
 
--- |Same as getWindowProperty32, but specialized to return a list of Atoms.
-getWindowPropertyAtom :: Display -> Atom -> Window -> IO (Maybe [Atom])
-getWindowPropertyAtom = rawGetWindowProperty 32
-
 -- |UnhandledFormat is for debugging issues with @TextProperty@ encodings.
 data UnhandledFormat = UnhandledFormat String
   deriving Show
@@ -92,7 +88,7 @@ stringPropList d a w = do
         unpackProperty :: String -> Atom -> TextProperty -> IO [String]
         unpackProperty name enc p
           | enc == Atom.aTOM = do
-              atoms <- fromMaybe mempty <$> getWindowPropertyAtom d a w
+              atoms <- fromMaybe mempty <$> rawGetWindowProperty 32 d a w
               catMaybes <$> mapM (getAtomName d) atoms
           | isStringlike name enc = wcTextPropertyToTextList d p
           | isNumeric name enc = do
