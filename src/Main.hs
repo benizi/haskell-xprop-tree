@@ -25,6 +25,7 @@ import Graphics.X11.Xlib.Extras
   , xSetErrorHandler
   )
 import Graphics.X11.Types (Window)
+import Numeric (showHex)
 import System.Environment (getArgs)
 
 -- |Return all X11 windows in the root window's tree, including the root.
@@ -102,5 +103,5 @@ main = do
   args <- getArgs
   let propname = case args of (a:_) -> a ; [] -> defaultPropertyName
   wps <- justWindowProp dpy (AString propname) ws
-  let join (win, val) = mconcat . intersperse "\t" $ [show win] ++ val
+  let join (id, val) = mconcat . intersperse "\t" $ ["0x" ++ showHex id ""] ++ val
   mapM_ (putStrLn . join) wps
