@@ -2,7 +2,7 @@ module Main where
 
 import qualified Control.Arrow as Arr
 import qualified Control.Exception as Ex
-import Control.Exception.Safe (MonadCatch, handleAny)
+import Control.Exception.Safe (MonadCatch, handleAny, throw)
 import Control.Monad (MonadPlus, forM_, mzero, unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
@@ -17,10 +17,10 @@ import Graphics.X11.Xlib
   )
 import qualified Graphics.X11.Xlib.Atom as Atom
 import Graphics.X11.Xlib.Atom (getAtomName, internAtom)
-import qualified Graphics.X11.Xlib.Extras as XE
 import Graphics.X11.Xlib.Extras
   ( TextProperty
   , tp_encoding
+  , tp_format
   , getTextProperty
   , getWindowProperty32
   , queryTree
@@ -63,11 +63,24 @@ resolve d (AString s) = internAtom d s False
 getWindowPropertyAtom :: Display -> Atom -> Window -> IO (Maybe [Atom])
 getWindowPropertyAtom = rawGetWindowProperty 32
 
+-- |UnhandledFormat is for debugging issues with @TextProperty@ encodings.
+data UnhandledFormat = UnhandledFormat String
+  deriving Show
+
+instance Ex.Exception UnhandledFormat
+
+-- |Exception handler that discards anything other than format errors.
+debugFormats :: Ex.SomeException -> IO [String]
+debugFormats e = return $
+  case Ex.fromException e of
+    Just (UnhandledFormat _) -> [show e]
+    _ -> []
+
 -- |Returns a list of strings for the given property (empty if not found).
 stringPropList :: Display -> StringAtom -> Window -> IO [String]
 stringPropList d as w = do
   a <- resolve d as
-  handleAny (const $ return []) $ getTextProperty d w a >>= \p -> do
+  handleAny debugFormats $ getTextProperty d w a >>= \p -> do
     let enc = tp_encoding p
     name <- fromMaybe (show enc) <$> getAtomName d enc
     unpackProperty name enc a p
@@ -98,7 +111,8 @@ stringPropList d as w = do
           | enc == Atom.wINDOW = do
               wins <- fromMaybe mempty <$> getWindowProperty32 d a w
               return $ (\n -> "0x" ++ showHex n "") <$> wins
-          | otherwise = return []
+          | otherwise = let message = concat [name, ":", show $ tp_format p]
+                         in throw $ Ex.toException $ UnhandledFormat message
 
 -- |If any errors occur, discard them and return an empty value.
 discardErrIO :: (MonadIO m, MonadCatch m, MonadPlus m) => IO a -> m a
