@@ -15,10 +15,12 @@ import Graphics.X11.Xlib
   , openDisplay
   , rootWindow
   )
-import Graphics.X11.Xlib.Atom (getAtomName, internAtom, aTOM)
+import qualified Graphics.X11.Xlib.Atom as Atom
+import Graphics.X11.Xlib.Atom (getAtomName, internAtom)
 import qualified Graphics.X11.Xlib.Extras as XE
 import Graphics.X11.Xlib.Extras
   ( TextProperty
+  , tp_encoding
   , getTextProperty
   , getWindowProperty32
   , queryTree
@@ -66,11 +68,37 @@ stringPropList :: Display -> StringAtom -> Window -> IO [String]
 stringPropList d as w = do
   a <- resolve d as
   handleAny (const $ return []) $ getTextProperty d w a >>= \p -> do
-    if XE.tp_encoding p == aTOM && XE.tp_format p == 32
-       then do
-         atoms <- fromMaybe mempty <$> getWindowPropertyAtom d a w
-         catMaybes <$> mapM (getAtomName d) atoms
-       else wcTextPropertyToTextList d p
+    let enc = tp_encoding p
+    name <- fromMaybe (show enc) <$> getAtomName d enc
+    unpackProperty name enc a p
+      where
+        isNumeric :: String -> Atom -> Bool
+        isNumeric name atom
+          | atom == Atom.cARDINAL = True
+          | atom == Atom.iNTEGER = True
+          | name == "TIMESTAMP" = True
+          | otherwise = False
+
+        isStringlike :: String -> Atom -> Bool
+        isStringlike name atom
+          | atom == Atom.sTRING = True
+          | name == "COMPOUND_TEXT" = True
+          | name == "UTF8_STRING" = True
+          | otherwise = False
+
+        unpackProperty :: String -> Atom -> Atom -> TextProperty -> IO [String]
+        unpackProperty name enc a p
+          | enc == Atom.aTOM = do
+              atoms <- fromMaybe mempty <$> getWindowPropertyAtom d a w
+              catMaybes <$> mapM (getAtomName d) atoms
+          | isStringlike name enc = wcTextPropertyToTextList d p
+          | isNumeric name enc = do
+              nums <- fromMaybe mempty <$> getWindowProperty32 d a w
+              return $ show <$> nums
+          | enc == Atom.wINDOW = do
+              wins <- fromMaybe mempty <$> getWindowProperty32 d a w
+              return $ (\n -> "0x" ++ showHex n "") <$> wins
+          | otherwise = return []
 
 -- |If any errors occur, discard them and return an empty value.
 discardErrIO :: (MonadIO m, MonadCatch m, MonadPlus m) => IO a -> m a
