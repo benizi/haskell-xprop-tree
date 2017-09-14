@@ -3,11 +3,11 @@ module Main where
 import qualified Control.Arrow as Arr
 import qualified Control.Exception as Ex
 import Control.Exception.Safe (MonadCatch, handleAny)
-import Control.Monad (MonadPlus, forM_, mzero)
+import Control.Monad (MonadPlus, forM_, mzero, unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Data.List (intersperse)
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Graphics.X11.Xlib
   ( Atom
   , Display
@@ -15,12 +15,14 @@ import Graphics.X11.Xlib
   , openDisplay
   , rootWindow
   )
-import Graphics.X11.Xlib.Atom (internAtom)
+import Graphics.X11.Xlib.Atom (getAtomName, internAtom, aTOM)
+import qualified Graphics.X11.Xlib.Extras as XE
 import Graphics.X11.Xlib.Extras
   ( TextProperty
   , getTextProperty
   , getWindowProperty32
   , queryTree
+  , rawGetWindowProperty
   , wcTextPropertyToTextList
   , xSetErrorHandler
   )
@@ -54,6 +56,21 @@ data StringAtom = AnAtom Atom
 resolve :: Display -> StringAtom -> IO Atom
 resolve _ (AnAtom a) = return a
 resolve d (AString s) = internAtom d s False
+
+-- |Same as getWindowProperty32, but specialized to return a list of Atoms.
+getWindowPropertyAtom :: Display -> Atom -> Window -> IO (Maybe [Atom])
+getWindowPropertyAtom = rawGetWindowProperty 32
+
+-- |Returns a list of strings for the given property (empty if not found).
+stringPropList :: Display -> StringAtom -> Window -> IO [String]
+stringPropList d as w = do
+  a <- resolve d as
+  handleAny (const $ return []) $ getTextProperty d w a >>= \p -> do
+    if XE.tp_encoding p == aTOM && XE.tp_format p == 32
+       then do
+         atoms <- fromMaybe mempty <$> getWindowPropertyAtom d a w
+         catMaybes <$> mapM (getAtomName d) atoms
+       else wcTextPropertyToTextList d p
 
 -- |If any errors occur, discard them and return an empty value.
 discardErrIO :: (MonadIO m, MonadCatch m, MonadPlus m) => IO a -> m a
@@ -102,6 +119,7 @@ main = do
   ws <- allWindows dpy
   args <- getArgs
   let propname = case args of (a:_) -> a ; [] -> defaultPropertyName
-  wps <- justWindowProp dpy (AString propname) ws
-  forM_ wps $ \(win, vals) -> do
-    putStrLn $ mconcat . intersperse "\t" $ ["0x" ++ showHex win ""] ++ vals
+  forM_ ws $ \win -> do
+    vals <- filter (/= "") <$> stringPropList dpy (AString propname) win
+    unless (null vals) $ do
+      putStrLn $ mconcat . intersperse "\t" $ ["0x" ++ showHex win ""] ++ vals
