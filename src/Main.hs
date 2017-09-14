@@ -50,15 +50,6 @@ getPropList dpy name w = do
     where
       empty = mempty :: Ex.SomeException -> IO [String]
 
--- |Dumb data type to allow passing either an Atom or a String.
-data StringAtom = AnAtom Atom
-                | AString String
-
--- |Given a Display and a String or an Atom, resolve it to an X11 Atom.
-resolve :: Display -> StringAtom -> IO Atom
-resolve _ (AnAtom a) = return a
-resolve d (AString s) = internAtom d s False
-
 -- |Same as getWindowProperty32, but specialized to return a list of Atoms.
 getWindowPropertyAtom :: Display -> Atom -> Window -> IO (Maybe [Atom])
 getWindowPropertyAtom = rawGetWindowProperty 32
@@ -77,13 +68,12 @@ debugFormats e = return $
     _ -> []
 
 -- |Returns a list of strings for the given property (empty if not found).
-stringPropList :: Display -> StringAtom -> Window -> IO [String]
-stringPropList d as w = do
-  a <- resolve d as
+stringPropList :: Display -> Atom -> Window -> IO [String]
+stringPropList d a w = do
   handleAny debugFormats $ getTextProperty d w a >>= \p -> do
     let enc = tp_encoding p
     name <- fromMaybe (show enc) <$> getAtomName d enc
-    unpackProperty name enc a p
+    unpackProperty name enc p
       where
         isNumeric :: String -> Atom -> Bool
         isNumeric name atom
@@ -99,8 +89,8 @@ stringPropList d as w = do
           | name == "UTF8_STRING" = True
           | otherwise = False
 
-        unpackProperty :: String -> Atom -> Atom -> TextProperty -> IO [String]
-        unpackProperty name enc a p
+        unpackProperty :: String -> Atom -> TextProperty -> IO [String]
+        unpackProperty name enc p
           | enc == Atom.aTOM = do
               atoms <- fromMaybe mempty <$> getWindowPropertyAtom d a w
               catMaybes <$> mapM (getAtomName d) atoms
@@ -119,32 +109,30 @@ discardErrIO :: (MonadIO m, MonadCatch m, MonadPlus m) => IO a -> m a
 discardErrIO = handleAny (\_ -> mzero) . liftIO
 
 -- |Get the non-empty String values of the given property for a Window.
-getPropsMaybe :: Display -> StringAtom -> Window -> IO (Maybe [String])
-getPropsMaybe dpy propID w = runMaybeT $ do
-  atom <- liftIO $ resolve dpy propID
+getPropsMaybe :: Display -> Atom -> Window -> IO (Maybe [String])
+getPropsMaybe dpy atom w = runMaybeT $ do
   prop <- handleAny (\_ -> mzero) $ liftIO $ getTextProperty dpy w atom
   discardErrIO $ wcTextPropertyToTextList dpy prop >>= return . filter (/= "")
 
 -- |Get the first non-empty String value of the given property for a Window.
-getPropMaybeT :: Display -> StringAtom -> Window -> MaybeT IO String
-getPropMaybeT dpy propID w = do
-  atom <- liftIO $ resolve dpy propID
+getPropMaybeT :: Display -> Atom -> Window -> MaybeT IO String
+getPropMaybeT dpy atom w = do
   prop <- discardErrIO $ getTextProperty dpy w atom
   liftIO $ wcTextPropertyToTextList dpy prop >>= return . head
 
 -- |Same as getPropMaybeT, but unwrapped from MaybeT.
-getPropMaybe :: Display -> StringAtom -> Window -> IO (Maybe String)
+getPropMaybe :: Display -> Atom -> Window -> IO (Maybe String)
 getPropMaybe d a w = runMaybeT $ getPropMaybeT d a w
 
 -- |Return a list of tuples consisting of a Window and its values for the prop.
-propPerWindow :: Display -> StringAtom -> [Window] -> IO [(Window,Maybe [String])]
+propPerWindow :: Display -> Atom -> [Window] -> IO [(Window,Maybe [String])]
 propPerWindow dpy propID windows = do
   props <- sequence $ getPropsMaybe dpy propID <$> windows
   return $ zip windows props
 
 -- |Same as propPerWindow, but limited to Windows that have a value for the
 -- property.
-justWindowProp :: Display -> StringAtom -> [Window] -> IO [(Window,[String])]
+justWindowProp :: Display -> Atom -> [Window] -> IO [(Window,[String])]
 justWindowProp d a ws = do
   wps <- propPerWindow d a ws
   return $ (Arr.second fromJust) <$> filter (isJust . snd) wps
@@ -161,7 +149,8 @@ main = do
   ws <- allWindows dpy
   args <- getArgs
   let propname = case args of (a:_) -> a ; [] -> defaultPropertyName
+  prop <- internAtom dpy propname False
   forM_ ws $ \win -> do
-    vals <- filter (/= "") <$> stringPropList dpy (AString propname) win
+    vals <- filter (/= "") <$> stringPropList dpy prop win
     unless (null vals) $ do
       putStrLn $ mconcat . intersperse "\t" $ ["0x" ++ showHex win ""] ++ vals
