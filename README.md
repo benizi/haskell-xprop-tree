@@ -4,19 +4,35 @@ Just a dumb thing for running `xprop` for a text property against all windows.
 
 # Usage
 
-``` sh
-## Defaults to printing the first value (if present) of WM_COMMAND
-$ stack exec -- xprop-tree
-4194305   parcellite
-6291457   lxpanel
-52428801  chromium
-# ... so on, for all windows ...
+Defaults to printing the first value (if present) of WM_COMMAND
 
-## Can specify what property to fetch
-$ stack exec -- _NET_WM_NAME
-23068681   vim - s/x/s/list.c - s/x/s/xinput.c - s/x/s/xinput.h
-54525961   NIX_PATH=~g nix-repl '<nixpkgs>' │ ~v │ bhaskell
-140509193  ~/plan9 │ bhaskell
+``` sh
+$ stack exec -- xprop-tree
+0x400001   parcellite
+0x600001   lxpanel
+0x3200001  chromium
+# ... so on, for all windows ...
+```
+
+Can specify what property to fetch
+
+``` sh
+$ stack exec -- xprop-tree _NET_WM_NAME
+0x1600009   vim - s/x/s/list.c - s/x/s/xinput.c - s/x/s/xinput.h
+0x3400009   NIX_PATH=~g nix-repl '<nixpkgs>' │ ~v │ bhaskell
+0x8600009  ~/plan9 │ bhaskell
+# ...
+```
+
+Multiple values are tab-delimited
+
+``` sh
+$ stack exec -- xprop-tree WM_CLASS
+0x200001    lxpanel     Lxpanel
+0x400001    parcellite  Parcellite
+0x800001    nm-applet   Nm-applet
+0x20001a    panel       lxpanel
+# ...
 ```
 
 # License
